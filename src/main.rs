@@ -15,8 +15,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // TODO Parse the msg for and run corresponding operations
 
     // TODO lookp the docker ip from based of the app uuid
-    let server_addr = String::from("127.0.0.1:8888");
-    let listen_addr = String::from("127.0.0.1:8080");
+    let server_addr = String::from("172.17.0.5:8080");
+    let listen_addr = String::from("0.0.0.0:8080");
     println!("Listening on: {}", listen_addr);
     println!("Proxying to: {}", server_addr);
 
@@ -44,8 +44,8 @@ async fn create_app(app_storage_id: String) -> Result<(), Box<dyn Error>> {
 }
 
 async fn docker_conn(mut inbound: TcpStream, proxy_addr: String) -> Result<(), Box<dyn Error>> {
+    println!("Got a new connection");
     let mut outbound = TcpStream::connect(proxy_addr).await?;
-
     let (mut ri, mut wi) = inbound.split();
     let (mut ro, mut wo) = outbound.split();
 
