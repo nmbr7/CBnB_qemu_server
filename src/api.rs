@@ -1,3 +1,4 @@
+use crate::message::{Message, ServiceMessage, ServiceMsgType, ServiceType};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs::File;
@@ -6,9 +7,9 @@ use std::io::SeekFrom;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::process::Command;
-use crate::message::{ServiceMessage, ServiceMsgType, ServiceType, Message};
 
-fn getfile(filename: String, addr: String, id: String) {
+// TODO make async
+pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
     let content = json!({
         "msg_type" :  "read",
         "filename" :  filename,
@@ -72,10 +73,7 @@ fn getfile(filename: String, addr: String, id: String) {
 
         {
             use std::fs::OpenOptions;
-            let mut file = OpenOptions::new()
-                .write(true)
-                .open("./storage.bin")
-                .unwrap();
+            let mut file = OpenOptions::new().write(true).open(dest.clone()).unwrap();
             //file.set_len(21312864).unwrap();
             let val = file.seek(SeekFrom::Start(index * 65536)).unwrap();
             //println!("seeked to offset {}",val);

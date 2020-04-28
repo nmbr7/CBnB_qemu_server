@@ -1,31 +1,34 @@
 mod api;
 mod message;
 
+use serde_json::{json, Value};
 use tokio::io;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
+use api::getfile;
 use futures::future::try_join;
 use futures::FutureExt;
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
+use std::sync::{Arc, Mutex};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-
-    // TODO Parse the msg for and run corresponding operations
-
     // TODO lookp the docker ip from based of the app uuid
-    let server_addr = String::from("172.17.0.5:8080");
-    let listen_addr = String::from("0.0.0.0:8080");
+    let listen_addr = format!("0.0.0.0:9090");
     println!("Listening on: {}", listen_addr);
-    println!("Proxying to: {}", server_addr);
+    let map: HashMap<String, String> = HashMap::new();
+    let ip_map = Arc::new(Mutex::new(map));
 
     let mut listener = TcpListener::bind(listen_addr).await?;
 
     while let Ok((inbound, _)) = listener.accept().await {
-        let d_conn = docker_conn(inbound, server_addr.clone()).map(|r| {
+        let ip_map_copy = Arc::clone(&ip_map);
+        let d_conn = server_handler(inbound, ip_map_copy).map(|r| {
             if let Err(e) = r {
-                println!("Failed to Connect to docker app ; error={}", e);
+                println!("Failed to init the thread ; error={}", e);
             }
         });
         tokio::spawn(d_conn);
@@ -33,14 +36,105 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+async fn server_handler(
+    mut inbound: TcpStream,
+    ip_map: Arc<Mutex<HashMap<String, String>>>,
+) -> Result<(), Box<dyn Error>> {
+    // TODO Parse the msg for and run corresponding operations
+    let mut resp = [0; 2048];
+    let no = inbound.read(&mut resp).await?;
+    println!("{}", std::str::from_utf8(&resp[0..no]).unwrap());
+    let message: Value = serde_json::from_slice(&resp[0..no]).unwrap();
+    println!("{:?}", message["msg_type"]);
 
-async fn create_app(app_storage_id: String) -> Result<(), Box<dyn Error>> {
+    match message["msg_type"].as_str().unwrap() {
+        "deploy" => {
+            let file_id = message["fileid"].as_str().unwrap().to_string();
+            let file_name = message["filename"].as_str().unwrap().to_string();
+            let addr = format!("172.17.0.5:8080");
+
+            use std::path::PathBuf;
+            let mut app_root_path = PathBuf::new();
+
+            app_root_path.push(r"/tmp/app_root");
+            let app_root = app_root_path.to_str().unwrap().to_string();
+
+            match message["lang"].as_str().unwrap() {
+                "python" => {
+                    app_root_path.push("python");
+                }
+                "rust" => {
+                    app_root_path.push("rust");
+                }
+                _ => {}
+            }
+
+            // TODO Generate a random filename
+            app_root_path.set_file_name("appzipname.zip");
+            let appzip = app_root_path.to_str().unwrap().to_string();
+
+            getfile(file_name, addr, file_id, &appzip);
+            app_cmd(&app_root, vec!["unzip", &appzip]).await?;
+            // TODO Parse the app.yaml file to get the Details of the app
+            // Based on the details got, create a Dockerfile depending on the language
+
+            app_root_path.set_file_name("appzipname");
+            let app_root_dir = app_root_path.to_str().unwrap().to_string();
+            app_cmd(&app_root_dir, vec!["build", "tag_name"]).await?;
+            app_cmd(&app_root_dir, vec!["start", "name", "tag_name"]).await?;
+
+            let ips = app_cmd(&app_root, vec!["getip"]).await?;
+            let cont_ip = ips.split(" - ").collect::<Vec<&str>>()[1].to_string();
+            {
+                let mut ip_map_mut = ip_map.lock().unwrap();
+                ip_map_mut.insert("name".to_string(), cont_ip);
+            }
+        }
+        "invoke" => {
+            inbound.write("OK".as_bytes()).await?;
+            let mut server_addr = String::new();
+            {
+                let ip_map_mut = ip_map.lock().unwrap();
+                server_addr = ip_map_mut.get(&"name".to_string()).unwrap().to_string();
+            }
+            println!("Proxying to: {}", server_addr);
+            let d_conn = docker_conn(inbound, server_addr.clone()).await?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+async fn app_cmd(app_root: &String, cmd: Vec<&str>) -> Result<String, Box<dyn Error>> {
+    use std::process::{Command, Stdio};
+
+    let cmdstr = match cmd[0] {
+        "build" => format!("docker build -t {} .", cmd[1]),
+        "start" => format!("docker run --detach --name {} --rm -t {}", cmd[1], cmd[2]),
+        "stop" => format!("docker stop {}", cmd[1]),
+        "getallip" => format!(
+            "docker inspect -f '{{.Name}} - {{.NetworkSettings.IPAddress }}' $(docker ps -aq)"
+        ),
+        "getip" => format!(
+            "docker inspect -f '{{.Name}} - {{.NetworkSettings.IPAddress }}' {}",
+            cmd[1]
+        ),
+        "unzip" => format!("unzip {}", cmd[1]),
+        _ => return Ok("Error".to_string()),
+    };
+
+    let args = cmdstr.split(" ").collect::<Vec<&str>>();
+    let a = Command::new(&args[0])
+        .args(&args[1..args.len()])
+        .current_dir(app_root)
+        .output()
+        .expect("Error");
 
     // TODO Fetch the app files from cloud storage and unzip ( Use the download function from the cbnb cli )
 
     // TODO Create a container from the yaml or the corresponding config file
 
-    Ok(())
+    Ok(std::str::from_utf8(&a.stdout).unwrap().to_string())
 }
 
 async fn docker_conn(mut inbound: TcpStream, proxy_addr: String) -> Result<(), Box<dyn Error>> {
