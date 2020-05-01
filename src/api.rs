@@ -36,9 +36,12 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
     stream.flush().unwrap();
 
     let no = stream.read(&mut resp).unwrap();
+    println!("{}",std::str::from_utf8(&resp[0..no]).unwrap());
     let fsize: Value = serde_json::from_slice(&resp[0..no]).unwrap();
     let filesize = fsize["total_size"].as_u64().unwrap() as usize;
 
+    stream.write_all(String::from("OK").as_bytes()).unwrap();
+    stream.flush().unwrap();
     let mut totalfilesize = 0 as usize;
     loop {
         let no = stream.read(&mut resp).unwrap();
@@ -73,7 +76,7 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
 
         {
             use std::fs::OpenOptions;
-            let mut file = OpenOptions::new().write(true).open(dest.clone()).unwrap();
+            let mut file = OpenOptions::new().create(true).write(true).open(dest.clone()).unwrap();
             //file.set_len(21312864).unwrap();
             let val = file.seek(SeekFrom::Start(index * 65536)).unwrap();
             //println!("seeked to offset {}",val);

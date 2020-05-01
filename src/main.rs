@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // TODO lookp the docker ip from based of the app uuid
-    let listen_addr = format!("0.0.0.0:9090");
+    let listen_addr = format!("0.0.0.0:8080");
     println!("Listening on: {}", listen_addr);
     let map: HashMap<String, String> = HashMap::new();
     let ip_map = Arc::new(Mutex::new(map));
@@ -26,6 +26,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     while let Ok((inbound, _)) = listener.accept().await {
         let ip_map_copy = Arc::clone(&ip_map);
+        let data = (inbound.peer_addr().unwrap().to_string());
+println!("{}",data);
         let d_conn = server_handler(inbound, ip_map_copy).map(|r| {
             if let Err(e) = r {
                 println!("Failed to init the thread ; error={}", e);
@@ -51,7 +53,7 @@ async fn server_handler(
         "deploy" => {
             let file_id = message["fileid"].as_str().unwrap().to_string();
             let file_name = message["filename"].as_str().unwrap().to_string();
-            let addr = format!("172.17.0.5:8080");
+            let addr = format!("10.0.2.2:7779");
 
             use std::path::PathBuf;
             let mut app_root_path = PathBuf::new();
@@ -59,7 +61,7 @@ async fn server_handler(
             app_root_path.push(r"/tmp/app_root");
             let app_root = app_root_path.to_str().unwrap().to_string();
 
-            match message["lang"].as_str().unwrap() {
+            match message["runtime"].as_str().unwrap() {
                 "python" => {
                     app_root_path.push("python");
                 }
@@ -70,11 +72,12 @@ async fn server_handler(
             }
 
             // TODO Generate a random filename
-            app_root_path.set_file_name("appzipname.zip");
+            app_root_path.set_file_name(file_name.clone());
             let appzip = app_root_path.to_str().unwrap().to_string();
-
+            println!("Downloading the app files");
             getfile(file_name, addr, file_id, &appzip);
             app_cmd(&app_root, vec!["unzip", &appzip]).await?;
+            println!("Unzipped the app files");
             // TODO Parse the app.yaml file to get the Details of the app
             // Based on the details got, create a Dockerfile depending on the language
 
@@ -119,7 +122,7 @@ async fn app_cmd(app_root: &String, cmd: Vec<&str>) -> Result<String, Box<dyn Er
             "docker inspect -f '{{.Name}} - {{.NetworkSettings.IPAddress }}' {}",
             cmd[1]
         ),
-        "unzip" => format!("unzip {}", cmd[1]),
+        "unzip" => format!("unzip {} -d {}", cmd[1],cmd[1].trim_end_matches(".zip")),
         _ => return Ok("Error".to_string()),
     };
 
