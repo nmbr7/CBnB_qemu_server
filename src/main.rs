@@ -7,6 +7,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 use std::fs::{self, DirBuilder};
+use std::fs::File;
+use std::io::prelude::*;
 
 use api::getfile;
 use futures::future::try_join;
@@ -29,7 +31,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     while let Ok((inbound, _)) = listener.accept().await {
         let ip_map_copy = Arc::clone(&ip_map);
         let data = (inbound.peer_addr().unwrap().to_string());
-println!("{}",data);
+        //println!("{}",data);
         let d_conn = server_handler(inbound, ip_map_copy).map(|r| {
             if let Err(e) = r {
                 println!("Failed to init the thread ; error={}", e);
@@ -47,9 +49,9 @@ async fn server_handler(
     // TODO Parse the msg for and run corresponding operations
     let mut resp = [0; 2048];
     let no = inbound.read(&mut resp).await?;
-    println!("{}", std::str::from_utf8(&resp[0..no]).unwrap());
+    //println!("{}", std::str::from_utf8(&resp[0..no]).unwrap());
     let message: Value = serde_json::from_slice(&resp[0..no]).unwrap();
-    println!("{:?}", message["msg_type"]);
+    //println!("{:?}", message["msg_type"]);
 
     match message["msg_type"].as_str().unwrap() {
         "deploy" => {
@@ -72,7 +74,7 @@ async fn server_handler(
                 _ => {}
             }
             let app_root = app_root_path.to_str().unwrap().to_string();
-            println!("{}",app_root);
+            //println!("{}",app_root);
             DirBuilder::new()
                     .recursive(true)
                     .create(&app_root_path)
@@ -83,7 +85,7 @@ async fn server_handler(
             
             app_root_path.set_file_name(file_name.clone());
             let appzip = app_root_path.to_str().unwrap().to_string();
-            println!("{}",appzip);
+            //println!("{}",appzip);
             println!("Downloading the app files");
             getfile(file_name, addr, file_id, &appzip);
             app_cmd(&app_root, vec!["unzip", &appzip]).await?;
@@ -92,14 +94,31 @@ async fn server_handler(
             // Based on the details got, create a Dockerfile depending on the language
 
             let app_root_dir = app_root_path.to_str().unwrap().trim_end_matches(".zip").to_string();
+
+            let dockerfile = format!("FROM python:3
+            WORKDIR /usr/src/app
+            COPY requirements.txt ./
+            RUN pip install --no-cache-dir -r requirements.txt
+            COPY . .
+            CMD [ \"python\", \"./main.py\" ]");
+            //println!("{}",dockerfile);
+
+            use std::fs::OpenOptions;
+            //println!("{}",app_root_dir);
+            
+            let mut file = OpenOptions::new().create(true).write(true).open(format!("{}/dockerfile",app_root_dir)).unwrap();
+
+            file.write_all(dockerfile.as_bytes()).unwrap();
+            file.flush().unwrap();
+            
             app_cmd(&app_root_dir, vec!["build", "tag_name"]).await?;
             println!("Docker Build complete");
             app_cmd(&app_root_dir, vec!["start", "name", "tag_name"]).await?;
             println!("starting the app");
 
             let ips = app_cmd(&app_root, vec!["getip","name"]).await?;
-            println!("{:?}",ips);
-            let cont_ip = ips.split(" - ").collect::<Vec<&str>>()[1].to_string();
+            println!("At ip address {}",ips);
+            let cont_ip = ips;
             {
                 let mut ip_map_mut = ip_map.lock().unwrap();
                 ip_map_mut.insert("name".to_string(), cont_ip);
@@ -127,16 +146,12 @@ async fn app_cmd(app_root: &String, cmd: Vec<&str>) -> Result<String, Box<dyn Er
         "build" => format!("docker build -t {} .", cmd[1]),
         "start" => format!("docker run --detach --name {} --rm -t {}", cmd[1], cmd[2]),
         "stop" => format!("docker stop {}", cmd[1]),
-        "getallip" => format!(
-            "docker inspect -f '{{.Name}} - {{.NetworkSettings.IPAddress }}' $(docker ps -aq)"
-        ),
-        "getip" => format!(
-            "docker inspect -f '{{.Name}} - {{.NetworkSettings.IPAddress }}' {}",
-            cmd[1]
-        ),
+        "getallip" => format!("docker inspect -f '{{.Name}} - {{.NetworkSettings.IPAddress }}' $(docker ps -aq)"),
+        "getip" => format!("docker inspect -f '{{{{.NetworkSettings.IPAddress}}}}' {}",cmd[1]),
         "unzip" => format!("unzip {} -d {}", cmd[1],cmd[1].trim_end_matches(".zip")),
         _ => return Ok("Error".to_string()),
     };
+
 
     let args = cmdstr.split(" ").collect::<Vec<&str>>();
     let a = Command::new(&args[0])
