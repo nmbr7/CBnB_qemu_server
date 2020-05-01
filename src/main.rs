@@ -6,6 +6,8 @@ use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
+use std::fs::{self, DirBuilder};
+
 use api::getfile;
 use futures::future::try_join;
 use futures::FutureExt;
@@ -59,7 +61,6 @@ async fn server_handler(
             let mut app_root_path = PathBuf::new();
 
             app_root_path.push(r"/tmp/app_root");
-            let app_root = app_root_path.to_str().unwrap().to_string();
 
             match message["runtime"].as_str().unwrap() {
                 "python" => {
@@ -70,6 +71,13 @@ async fn server_handler(
                 }
                 _ => {}
             }
+            let app_root = app_root_path.to_str().unwrap().to_string();
+
+            DirBuilder::new()
+                    .recursive(true)
+                    .create(&app_root_path)
+                    .unwrap();
+
 
             // TODO Generate a random filename
             app_root_path.set_file_name(file_name.clone());
