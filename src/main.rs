@@ -72,29 +72,33 @@ async fn server_handler(
                 _ => {}
             }
             let app_root = app_root_path.to_str().unwrap().to_string();
-
+            println!("{}",app_root);
             DirBuilder::new()
                     .recursive(true)
                     .create(&app_root_path)
                     .unwrap();
 
 
-            // TODO Generate a random filename
+            app_root_path.push("zipdir");
+            
             app_root_path.set_file_name(file_name.clone());
             let appzip = app_root_path.to_str().unwrap().to_string();
+            println!("{}",appzip);
             println!("Downloading the app files");
             getfile(file_name, addr, file_id, &appzip);
             app_cmd(&app_root, vec!["unzip", &appzip]).await?;
             println!("Unzipped the app files");
-            // TODO Parse the app.yaml file to get the Details of the app
+            // TODO Parse the app.toml file to get the Details of the app
             // Based on the details got, create a Dockerfile depending on the language
 
-            app_root_path.set_file_name("appzipname");
-            let app_root_dir = app_root_path.to_str().unwrap().to_string();
+            let app_root_dir = app_root_path.to_str().unwrap().trim_end_matches(".zip").to_string();
             app_cmd(&app_root_dir, vec!["build", "tag_name"]).await?;
+            println!("Docker Build complete");
             app_cmd(&app_root_dir, vec!["start", "name", "tag_name"]).await?;
+            println!("starting the app");
 
-            let ips = app_cmd(&app_root, vec!["getip"]).await?;
+            let ips = app_cmd(&app_root, vec!["getip","name"]).await?;
+            println!("{:?}",ips);
             let cont_ip = ips.split(" - ").collect::<Vec<&str>>()[1].to_string();
             {
                 let mut ip_map_mut = ip_map.lock().unwrap();
