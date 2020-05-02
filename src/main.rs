@@ -6,8 +6,8 @@ use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use std::fs::{self, DirBuilder};
 use std::fs::File;
+use std::fs::{self, DirBuilder};
 use std::io::prelude::*;
 
 use api::getfile;
@@ -57,8 +57,9 @@ async fn server_handler(
         "deploy" => {
             let file_id = message["fileid"].as_str().unwrap().to_string();
             let file_name = message["filename"].as_str().unwrap().to_string();
+            let tagname = message["tag"].as_str().unwrap().to_string();
             let addr = format!("10.0.2.2:7779");
-
+            let name = tagname.clone();
             use std::path::PathBuf;
             let mut app_root_path = PathBuf::new();
 
@@ -76,13 +77,12 @@ async fn server_handler(
             let app_root = app_root_path.to_str().unwrap().to_string();
             //println!("{}",app_root);
             DirBuilder::new()
-                    .recursive(true)
-                    .create(&app_root_path)
-                    .unwrap();
-
+                .recursive(true)
+                .create(&app_root_path)
+                .unwrap();
 
             app_root_path.push("zipdir");
-            
+
             app_root_path.set_file_name(file_name.clone());
             let appzip = app_root_path.to_str().unwrap().to_string();
             //println!("{}",appzip);
@@ -93,43 +93,54 @@ async fn server_handler(
             // TODO Parse the app.toml file to get the Details of the app
             // Based on the details got, create a Dockerfile depending on the language
 
-            let app_root_dir = app_root_path.to_str().unwrap().trim_end_matches(".zip").to_string();
+            let app_root_dir = app_root_path
+                .to_str()
+                .unwrap()
+                .trim_end_matches(".zip")
+                .to_string();
 
-            let dockerfile = format!("FROM python:3
+            let dockerfile = format!(
+            "FROM python:3
             WORKDIR /usr/src/app
             COPY requirements.txt ./
             RUN pip install --no-cache-dir -r requirements.txt
             COPY . .
-            CMD [ \"python\", \"./main.py\" ]");
+            CMD [ \"python\", \"./main.py\" ]"
+            );
             //println!("{}",dockerfile);
 
             use std::fs::OpenOptions;
             //println!("{}",app_root_dir);
-            
-            let mut file = OpenOptions::new().create(true).write(true).open(format!("{}/dockerfile",app_root_dir)).unwrap();
+
+            let mut file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(format!("{}/dockerfile", app_root_dir))
+                .unwrap();
 
             file.write_all(dockerfile.as_bytes()).unwrap();
             file.flush().unwrap();
-            
-            app_cmd(&app_root_dir, vec!["build", "tag_name"]).await?;
+
+            app_cmd(&app_root_dir, vec!["build", &tagname]).await?;
             println!("Docker Build complete");
-            app_cmd(&app_root_dir, vec!["start", "name", "tag_name"]).await?;
+            app_cmd(&app_root_dir, vec!["start", &name, &tagname]).await?;
             println!("starting the app");
 
-            let ips = app_cmd(&app_root, vec!["getip","name"]).await?;
-            println!("At ip address {}",ips);
-            let cont_ip = ips;
+            let ips = app_cmd(&app_root, vec!["getip", &name]).await?;
+            println!("At ip address {}", ips);
+            let cont_ip = format!("{}:8080",ips.trim().trim_matches('\''));
             {
                 let mut ip_map_mut = ip_map.lock().unwrap();
-                ip_map_mut.insert("name".to_string(), cont_ip);
+                ip_map_mut.insert(tagname.to_string(), cont_ip);
             }
         }
         "invoke" => {
+            let name = message["tag"].as_str().unwrap().to_string(); 
             inbound.write("OK".as_bytes()).await?;
             let mut server_addr = String::new();
             {
                 let ip_map_mut = ip_map.lock().unwrap();
-                server_addr = ip_map_mut.get(&"name".to_string()).unwrap().to_string();
+                server_addr = ip_map_mut.get(&name).unwrap().to_string();
             }
             println!("Proxying to: {}", server_addr);
             let d_conn = docker_conn(inbound, server_addr.clone()).await?;
@@ -146,12 +157,16 @@ async fn app_cmd(app_root: &String, cmd: Vec<&str>) -> Result<String, Box<dyn Er
         "build" => format!("docker build -t {} .", cmd[1]),
         "start" => format!("docker run --detach --name {} --rm -t {}", cmd[1], cmd[2]),
         "stop" => format!("docker stop {}", cmd[1]),
-        "getallip" => format!("docker inspect -f '{{.Name}} - {{.NetworkSettings.IPAddress }}' $(docker ps -aq)"),
-        "getip" => format!("docker inspect -f '{{{{.NetworkSettings.IPAddress}}}}' {}",cmd[1]),
-        "unzip" => format!("unzip {} -d {}", cmd[1],cmd[1].trim_end_matches(".zip")),
+        "getallip" => format!(
+            "docker inspect -f '{{.Name}} - {{.NetworkSettings.IPAddress }}' $(docker ps -aq)"
+        ),
+        "getip" => format!(
+            "docker inspect -f '{{{{.NetworkSettings.IPAddress}}}}' {}",
+            cmd[1]
+        ),
+        "unzip" => format!("unzip {} -d {}", cmd[1], cmd[1].trim_end_matches(".zip")),
         _ => return Ok("Error".to_string()),
     };
-
 
     let args = cmdstr.split(" ").collect::<Vec<&str>>();
     let a = Command::new(&args[0])
