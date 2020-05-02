@@ -7,6 +7,7 @@ use std::io::SeekFrom;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::process::Command;
+use indicatif::{ProgressBar, ProgressStyle};
 
 // TODO make async
 pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
@@ -31,6 +32,12 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
     let mut destbuffer = [0 as u8; 2048];
 
     let mut stream = TcpStream::connect(addr).unwrap();
+    /*
+    let connector = TlsConnector::new().unwrap();
+    let stream = TcpStream::connect(&addr).unwrap();
+    let mut stream = connector.connect(&addr.split(":").collect::<Vec<&str>>()[0], stream).unwrap();
+    */
+
     //println!("{:?}", msg_data);
     stream.write_all(msg_data.as_bytes()).unwrap();
     stream.flush().unwrap();
@@ -43,8 +50,16 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
     stream.write_all(String::from("OK").as_bytes()).unwrap();
     stream.flush().unwrap();
     let mut totalfilesize = 0 as usize;
+
+    let pb = ProgressBar::new(filesize as u64);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+        .progress_chars("#>-"));
     loop {
+        let mut resp = [0; 2048];
         let no = stream.read(&mut resp).unwrap();
+        stream.write_all(String::from("OK").as_bytes()).unwrap();
+        stream.flush().unwrap();
         //println!("val {}",std::str::from_utf8(&resp[0..no]).unwrap());
         let metadata: Value = serde_json::from_slice(&resp[0..no]).unwrap();
         //println!("{}",metadata);
@@ -56,8 +71,6 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
         let index = metadata["index"].as_u64().unwrap();
         let mut total = 0 as usize;
         let mut bufvec: Vec<u8> = vec![];
-        stream.write_all(String::from("OK").as_bytes()).unwrap();
-        stream.flush().unwrap();
         loop {
             // ERROR hangs when size is 13664 so fetch the total file size first and if   \
             //       the size is less than 65536 before reaching the end request for ret- \
@@ -67,9 +80,12 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
                 dno = size;
             }
             total += dno;
+            //println!("{:?}",destbuffer[(dno-15)..dno].to_vec());
             bufvec.append(&mut destbuffer[0..dno].to_vec());
+            if total >= size {
             //println!("Total: {} - dno: {} - Size {}",total,dno,size);
-            if total == size {
+            stream.write_all(String::from("OK").as_bytes()).unwrap();
+            stream.flush().unwrap();
                 break;
             }
         }
@@ -82,18 +98,24 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
                 .open(dest.clone())
                 .unwrap();
             //file.set_len(21312864).unwrap();
-            let val = file.seek(SeekFrom::Start(index * 65536)).unwrap();
+            let val = file.seek(SeekFrom::Start(index * 1048576)).unwrap();
             //println!("seeked to offset {}",val);
             //let mut contents = vec![];
             //let mut handle = file.take(size)i;
             file.write_all(&bufvec.as_slice()).unwrap();
             file.flush().unwrap();
         }
+
         totalfilesize += total;
+        pb.set_position(totalfilesize as u64);
+
+        //println!("totalfilesize fetch so far: {}",totalfilesize);
         if totalfilesize == filesize {
             break;
         }
     }
+
+pb.finish_with_message("downloaded");
     println!(
         "File Download complete, Total File Size : {} bytes",
         totalfilesize

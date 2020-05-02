@@ -100,7 +100,7 @@ async fn server_handler(
                 .to_string();
 
             let dockerfile = format!(
-            "FROM python:3
+                "FROM python:3
             WORKDIR /usr/src/app
             COPY requirements.txt ./
             RUN pip install --no-cache-dir -r requirements.txt
@@ -128,14 +128,14 @@ async fn server_handler(
 
             let ips = app_cmd(&app_root, vec!["getip", &name]).await?;
             println!("At ip address {}", ips);
-            let cont_ip = format!("{}:8080",ips.trim().trim_matches('\''));
+            let cont_ip = format!("{}:8080", ips.trim().trim_matches('\''));
             {
                 let mut ip_map_mut = ip_map.lock().unwrap();
                 ip_map_mut.insert(tagname.to_string(), cont_ip);
             }
         }
         "invoke" => {
-            let name = message["tag"].as_str().unwrap().to_string(); 
+            let name = message["tag"].as_str().unwrap().to_string();
             inbound.write("OK".as_bytes()).await?;
             let mut server_addr = String::new();
             {
