@@ -9,6 +9,12 @@ use std::net::TcpStream;
 use std::process::Command;
 use indicatif::{ProgressBar, ProgressStyle};
 
+pub fn initproxy(stream: &mut TcpStream, addr: String){
+    stream.write_all(addr.as_bytes()).unwrap();
+    stream.flush().unwrap();
+    stream.write("OK".as_bytes()).unwrap();
+}
+
 // TODO make async
 pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
     let content = json!({
@@ -30,8 +36,17 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
 
     let mut resp = [0; 2048];
     let mut destbuffer = [0 as u8; 2048];
-
-    let mut stream = TcpStream::connect(addr).unwrap();
+    let test = false;
+    let mut stream = if test{
+        let addr = format!("10.0.2.2:1010");
+        TcpStream::connect(&addr).unwrap()
+    }
+    else{
+        TcpStream::connect(&addr).unwrap()
+    };
+    if test{
+        initproxy(&mut stream,addr.clone());
+    }
     /*
     let connector = TlsConnector::new().unwrap();
     let stream = TcpStream::connect(&addr).unwrap();
