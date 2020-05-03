@@ -1,4 +1,5 @@
 use crate::message::{Message, ServiceMessage, ServiceMsgType, ServiceType};
+use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs::File;
@@ -7,9 +8,8 @@ use std::io::SeekFrom;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::process::Command;
-use indicatif::{ProgressBar, ProgressStyle};
 
-pub fn initproxy(stream: &mut TcpStream, addr: String){
+pub fn initproxy(stream: &mut TcpStream, addr: String) {
     stream.write_all(addr.as_bytes()).unwrap();
     stream.flush().unwrap();
     stream.write("OK".as_bytes()).unwrap();
@@ -37,15 +37,14 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
     let mut resp = [0; 2048];
     let mut destbuffer = [0 as u8; 2048];
     let test = false;
-    let mut stream = if test{
+    let mut stream = if test {
         let addr = format!("10.0.2.2:1010");
         TcpStream::connect(&addr).unwrap()
-    }
-    else{
+    } else {
         TcpStream::connect(&addr).unwrap()
     };
-    if test{
-        initproxy(&mut stream,addr.clone());
+    if test {
+        initproxy(&mut stream, addr.clone());
     }
     /*
     let connector = TlsConnector::new().unwrap();
@@ -98,9 +97,9 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
             //println!("{:?}",destbuffer[(dno-15)..dno].to_vec());
             bufvec.append(&mut destbuffer[0..dno].to_vec());
             if total >= size {
-            //println!("Total: {} - dno: {} - Size {}",total,dno,size);
-            stream.write_all(String::from("OK").as_bytes()).unwrap();
-            stream.flush().unwrap();
+                //println!("Total: {} - dno: {} - Size {}",total,dno,size);
+                stream.write_all(String::from("OK").as_bytes()).unwrap();
+                stream.flush().unwrap();
                 break;
             }
         }
@@ -130,7 +129,7 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
         }
     }
 
-pb.finish_with_message("downloaded");
+    pb.finish_with_message("downloaded");
     println!(
         "File Download complete, Total File Size : {} bytes",
         totalfilesize
