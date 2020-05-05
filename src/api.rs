@@ -70,7 +70,6 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
         .progress_chars("#>-"));
     loop {
-        let mut resp = [0; 2048];
         let no = stream.read(&mut resp).unwrap();
         stream.write_all(String::from("OK").as_bytes()).unwrap();
         stream.flush().unwrap();
@@ -85,17 +84,27 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
         let index = metadata["index"].as_u64().unwrap();
         let mut total = 0 as usize;
         let mut bufvec: Vec<u8> = vec![];
+        let mut destbuffer: Vec<u8> = vec![];
         loop {
             // ERROR hangs when size is 13664 so fetch the total file size first and if   \
             //       the size is less than 65536 before reaching the end request for ret- \
             //       ransmission
-            let mut dno = stream.read(&mut destbuffer).unwrap();
-            if dno > size {
+            //let mut dno = stream.read_to_end(&mut destbuffer).unwrap();
+            for byte in stream.try_clone().unwrap().bytes() {
+                total +=1;
+                destbuffer.push(byte.unwrap());
+                if total >= size{
+                    break;
+                }
+             }
+            /*if dno > size {
                 dno = size;
-            }
-            total += dno;
-            //println!("{:?}",destbuffer[(dno-15)..dno].to_vec());
-            bufvec.append(&mut destbuffer[0..dno].to_vec());
+            }*/
+            bufvec.append(&mut destbuffer[0..total].to_vec());
+            
+            //println!("First 10 Bytes {:?}",bufvec[0..10].to_vec());
+            //println!("Last  10 Bytes {:?}",bufvec[total-10..total].to_vec());
+            //println!("Total: {} - Size {}",total,size);
             if total >= size {
                 //println!("Total: {} - dno: {} - Size {}",total,dno,size);
                 stream.write_all(String::from("OK").as_bytes()).unwrap();
@@ -104,6 +113,8 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
             }
         }
 
+        totalfilesize += total;
+        pb.set_position(totalfilesize as u64);
         {
             use std::fs::OpenOptions;
             let mut file = OpenOptions::new()
@@ -112,7 +123,7 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
                 .open(dest.clone())
                 .unwrap();
             //file.set_len(21312864).unwrap();
-            let val = file.seek(SeekFrom::Start(index * 1048576)).unwrap();
+            let val = file.seek(SeekFrom::Start(index * 4046848)).unwrap();
             //println!("seeked to offset {}",val);
             //let mut contents = vec![];
             //let mut handle = file.take(size)i;
@@ -120,8 +131,6 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
             file.flush().unwrap();
         }
 
-        totalfilesize += total;
-        pb.set_position(totalfilesize as u64);
 
         //println!("totalfilesize fetch so far: {}",totalfilesize);
         if totalfilesize == filesize {
