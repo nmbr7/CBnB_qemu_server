@@ -155,7 +155,7 @@ async fn app_cmd(app_root: &String, cmd: Vec<&str>) -> Result<String, Box<dyn Er
 
     let cmdstr = match cmd[0] {
         "build" => format!("docker build -t {} .", cmd[1]),
-        "start" => format!("docker run --detach --name {} --rm -t {}", cmd[1], cmd[2]),
+        "start" => format!("docker run --detach --read-only --name {} --rm -t {}", cmd[1], cmd[2]),
         "stop" => format!("docker stop {}", cmd[1]),
         "getallip" => format!(
             "docker inspect -f '{{.Name}} - {{.NetworkSettings.IPAddress }}' $(docker ps -aq)"
