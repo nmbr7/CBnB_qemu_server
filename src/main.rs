@@ -100,13 +100,7 @@ async fn server_handler(
                 .to_string();
 
             let dockerfile = format!(
-                "FROM python:3
-            WORKDIR /usr/src/app
-            COPY requirements.txt ./
-            RUN pip install --no-cache-dir -r requirements.txt
-            COPY . .
-            CMD [ \"python\", \"./main.py\" ]"
-            );
+                "FROM python:3\nWORKDIR /usr/src/app\nCOPY requirements.txt ./\nRUN pip install --no-cache-dir -r requirements.txt\nCOPY . .\nCMD [ \"python\", \"./main.py\" ]");
             //println!("{}",dockerfile);
 
             use std::fs::OpenOptions;
@@ -135,12 +129,19 @@ async fn server_handler(
             }
         }
         "invoke" => {
+            println!("Got Conn");
             let name = message["tag"].as_str().unwrap().to_string();
-            inbound.write("OK".as_bytes()).await?;
             let mut server_addr = String::new();
             {
                 let ip_map_mut = ip_map.lock().unwrap();
-                server_addr = ip_map_mut.get(&name).unwrap().to_string();
+                server_addr = ip_map_mut.get(&name).unwrap_or(&"None".to_string()).to_string();
+            }
+            if server_addr == "None".to_string(){
+                inbound.write("NO_APP".as_bytes()).await?;
+                return Ok(());
+            }
+            else{
+                inbound.write("OK".as_bytes()).await?;
             }
             println!("Proxying to: {}", server_addr);
             let d_conn = docker_conn(inbound, server_addr.clone()).await?;
@@ -155,7 +156,7 @@ async fn app_cmd(app_root: &String, cmd: Vec<&str>) -> Result<String, Box<dyn Er
 
     let cmdstr = match cmd[0] {
         "build" => format!("docker build -t {} .", cmd[1]),
-        "start" => format!("docker run --detach --read-only --name {} --rm -t {}", cmd[1], cmd[2]),
+        "start" => format!("docker run --rm --read-only --detach --name {} --rm -t {}", cmd[1], cmd[2]),
         "stop" => format!("docker stop {}", cmd[1]),
         "getallip" => format!(
             "docker inspect -f '{{.Name}} - {{.NetworkSettings.IPAddress }}' $(docker ps -aq)"

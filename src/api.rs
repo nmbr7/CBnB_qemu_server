@@ -12,7 +12,8 @@ use std::process::Command;
 pub fn initproxy(stream: &mut TcpStream, addr: String) {
     stream.write_all(addr.as_bytes()).unwrap();
     stream.flush().unwrap();
-    stream.write("OK".as_bytes()).unwrap();
+    let mut resp = [0; 2048];
+    let no = stream.read(&mut resp).unwrap();
 }
 
 // TODO make async
@@ -36,14 +37,15 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
 
     let mut resp = [0; 2048];
     let mut destbuffer = [0 as u8; 2048];
-    let test = false;
+    let test = true;
     let mut stream = if test {
-        let addr = format!("10.0.2.2:1010");
+        let addr = format!("10.0.2.2:9090");
         TcpStream::connect(&addr).unwrap()
     } else {
         TcpStream::connect(&addr).unwrap()
     };
-    if test {
+    if test{
+        let addr = format!("172.28.5.77:7779");
         initproxy(&mut stream, addr.clone());
     }
     /*
