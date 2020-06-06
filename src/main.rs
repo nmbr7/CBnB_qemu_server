@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // TODO lookp the docker ip from based of the app uuid
     let listen_addr = format!("0.0.0.0:8080");
     println!("Listening on: {}", listen_addr);
-    let map: HashMap<String, String> = HashMap::new();
+    let map: HashMap<String, Vec<String>> = HashMap::new();
     let ip_map = Arc::new(Mutex::new(map));
 
     let mut listener = TcpListener::bind(listen_addr).await?;
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 async fn server_handler(
     mut inbound: TcpStream,
-    ip_map: Arc<Mutex<HashMap<String, String>>>,
+    ip_map: Arc<Mutex<HashMap<String, Vec<String>>>>,
 ) -> Result<(), Box<dyn Error>> {
     // TODO Parse the msg for and run corresponding operations
     let mut resp = [0; 2048];
@@ -92,7 +92,7 @@ async fn server_handler(
             println!("Unzipped the app files");
             // TODO Parse the app.toml file to get the Details of the app
             // Based on the details got, create a Dockerfile depending on the language
-
+            let mut app_vec = vec![String::from("None"),String::from("No Status Yet")];
             let app_root_dir = app_root_path
                 .to_str()
                 .unwrap()
@@ -114,18 +114,28 @@ async fn server_handler(
 
             file.write_all(dockerfile.as_bytes()).unwrap();
             file.flush().unwrap();
-
+            println!("Building Docker image");
+            app_vec[1] = format!("Building Docker image");
+            {
+                let mut ip_map_mut = ip_map.lock().unwrap();
+                ip_map_mut.insert(tagname.to_string(), app_vec.clone());
+            }
             app_cmd(&app_root_dir, vec!["build", &tagname]).await?;
-            println!("Docker Build complete");
-            app_cmd(&app_root_dir, vec!["start", &name, &tagname]).await?;
             println!("starting the app");
+            app_vec[1] = format!("Starting Docker container");
+            {
+                let mut ip_map_mut = ip_map.lock().unwrap();
+                ip_map_mut.insert(tagname.to_string(), app_vec.clone());
+            }
+            app_cmd(&app_root_dir, vec!["start", &name, &tagname]).await?;
 
             let ips = app_cmd(&app_root, vec!["getip", &name]).await?;
             println!("At ip address {}", ips);
-            let cont_ip = format!("{}:8080", ips.trim().trim_matches('\''));
+            app_vec[0] = format!("{}:8080", ips.trim().trim_matches('\''));
+            app_vec[1] = format!("App started");
             {
                 let mut ip_map_mut = ip_map.lock().unwrap();
-                ip_map_mut.insert(tagname.to_string(), cont_ip);
+                ip_map_mut.insert(tagname.to_string(), app_vec.clone());
             }
         }
         "invoke" => {
@@ -134,7 +144,7 @@ async fn server_handler(
             let mut server_addr = String::new();
             {
                 let ip_map_mut = ip_map.lock().unwrap();
-                server_addr = ip_map_mut.get(&name).unwrap_or(&"None".to_string()).to_string();
+                server_addr = ip_map_mut.get(&name).unwrap_or(&vec!["None".to_string()])[0].to_string();
             }
             if server_addr == "None".to_string(){
                 inbound.write("NO_APP".as_bytes()).await?;
@@ -146,6 +156,23 @@ async fn server_handler(
             println!("Proxying to: {}", server_addr);
             let d_conn = docker_conn(inbound, server_addr.clone()).await?;
         }
+        "status" => {
+            let name = message["tag"].as_str().unwrap().to_string();
+            let mut status = String::new();
+            {
+                let ip_map_mut = ip_map.lock().unwrap();
+                status = ip_map_mut.get(&name).unwrap_or(&vec!["None".to_string()])[1].to_string();
+            }
+            if status == "None".to_string(){
+                inbound.write(status.as_bytes()).await?;
+                return Ok(());
+            }
+            else{
+                inbound.write("OK".as_bytes()).await?;
+            }
+
+            
+            }
         _ => {}
     }
     Ok(())
