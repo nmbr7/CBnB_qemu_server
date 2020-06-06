@@ -37,7 +37,7 @@ pub fn getfile(filename: String, addr: String, id: String, dest: &String) {
 
     let mut resp = [0; 2048];
     let mut destbuffer = [0 as u8; 2048];
-    let test = true;
+    let test = false;
     let mut stream = if test {
         let addr = format!("10.0.2.2:9090");
         TcpStream::connect(&addr).unwrap()

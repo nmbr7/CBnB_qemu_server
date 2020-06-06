@@ -161,14 +161,14 @@ async fn server_handler(
             let mut status = String::new();
             {
                 let ip_map_mut = ip_map.lock().unwrap();
-                status = ip_map_mut.get(&name).unwrap_or(&vec!["None".to_string()])[1].to_string();
+                status = ip_map_mut.get(&name).unwrap_or(&vec!["".to_string(),"None".to_string()])[1].to_string();
             }
             if status == "None".to_string(){
-                inbound.write(status.as_bytes()).await?;
+                inbound.write("No Status for the App yet".as_bytes()).await?;
                 return Ok(());
             }
             else{
-                inbound.write("OK".as_bytes()).await?;
+                inbound.write(status.as_bytes()).await?;
             }
 
             
@@ -183,7 +183,7 @@ async fn app_cmd(app_root: &String, cmd: Vec<&str>) -> Result<String, Box<dyn Er
 
     let cmdstr = match cmd[0] {
         "build" => format!("docker build -t {} .", cmd[1]),
-        "start" => format!("docker run --rm --read-only --detach --name {} --rm -t {}", cmd[1], cmd[2]),
+        "start" => format!("docker run --read-only --detach --name {} --rm -t {}", cmd[1], cmd[2]),
         "stop" => format!("docker stop {}", cmd[1]),
         "getallip" => format!(
             "docker inspect -f '{{.Name}} - {{.NetworkSettings.IPAddress }}' $(docker ps -aq)"
